@@ -1,18 +1,19 @@
--- Steal An Egg | Auto Steal Egg Machine | Multi-executor | GUI
+-- Steal An Egg | Auto Steal + Auto Level + No Dead | Multi-executor | GUI
 -- Author: zynn
--- Works on Delta, Solara, Xeno, Fluxus, Wave, Potassium, Volt, etc.
 -- Insert = toggle menu | RightShift = start/stop
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
 local lp = Players.LocalPlayer
 local running = false
 local baseCFrame = nil
 local tweenSpeed = 90
+local noclip = true
+local autoLevel = true
 
--- executor-safe prompt fire
 local function safeFirePrompt(prompt)
 	if not prompt or not prompt:IsA("ProximityPrompt") or not prompt.Enabled then return false end
 	local oldHold = prompt.HoldDuration
@@ -20,20 +21,11 @@ local function safeFirePrompt(prompt)
 	if fireproximityprompt then
 		fireproximityprompt(prompt)
 	else
-		-- fallback for executors that expose it differently
-		local ok = pcall(function()
+		pcall(function()
 			prompt:InputHoldBegin()
 			task.wait(0.05)
 			prompt:InputHoldEnd()
 		end)
-		if not ok then
-			-- last resort
-			pcall(function()
-				game:GetService("VirtualInputManager"):SendKeyEvent(true, Enum.KeyCode.E, false, game)
-				task.wait(0.1)
-				game:GetService("VirtualInputManager"):SendKeyEvent(false, Enum.KeyCode.E, false, game)
-			end)
-		end
 	end
 	prompt.HoldDuration = oldHold
 	return true
@@ -42,141 +34,94 @@ end
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "zynn_StealGUI"
 ScreenGui.ResetOnSpawn = false
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = lp:WaitForChild("PlayerGui")
 
 local Frame = Instance.new("Frame")
-Frame.Size = UDim2.new(0, 300, 0, 240)
-Frame.Position = UDim2.new(0.02, 0, 0.22, 0)
+Frame.Size = UDim2.new(0, 280, 0, 260)
+Frame.Position = UDim2.new(0.02, 0, 0.2, 0)
 Frame.BackgroundColor3 = Color3.fromRGB(12, 12, 14)
-Frame.BorderSizePixel = 0
 Frame.Active = true
 Frame.Draggable = true
 Frame.Parent = ScreenGui
-
-local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 12)
-MainCorner.Parent = Frame
-
-local MainStroke = Instance.new("UIStroke")
-MainStroke.Color = Color3.fromRGB(55, 55, 60)
-MainStroke.Thickness = 1.2
-MainStroke.Parent = Frame
-
-local Gradient = Instance.new("UIGradient")
-Gradient.Color = ColorSequence.new({
-	ColorSequenceKeypoint.new(0, Color3.fromRGB(18, 18, 22)),
-	ColorSequenceKeypoint.new(1, Color3.fromRGB(10, 10, 12))
-})
-Gradient.Rotation = 90
-Gradient.Parent = Frame
-
-local TitleBar = Instance.new("Frame")
-TitleBar.Size = UDim2.new(1, 0, 0, 36)
-TitleBar.BackgroundColor3 = Color3.fromRGB(22, 22, 26)
-TitleBar.BorderSizePixel = 0
-TitleBar.Parent = Frame
-
-local TitleCorner = Instance.new("UICorner")
-TitleCorner.CornerRadius = UDim.new(0, 12)
-TitleCorner.Parent = TitleBar
+Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 10)
 
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -50, 1, 0)
-Title.Position = UDim2.new(0, 14, 0, 0)
+Title.Size = UDim2.new(1, -40, 0, 30)
+Title.Position = UDim2.new(0, 10, 0, 4)
 Title.BackgroundTransparency = 1
-Title.Text = "zynn  ·  machine steal"
-Title.TextColor3 = Color3.fromRGB(230, 230, 230)
+Title.Text = "zynn · steal + level"
+Title.TextColor3 = Color3.new(1, 1, 1)
 Title.Font = Enum.Font.GothamBold
-Title.TextSize = 15
+Title.TextSize = 14
 Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Parent = TitleBar
-
-local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size = UDim2.new(0, 26, 0, 26)
-CloseBtn.Position = UDim2.new(1, -32, 0, 5)
-CloseBtn.BackgroundColor3 = Color3.fromRGB(160, 45, 45)
-CloseBtn.Text = "×"
-CloseBtn.TextColor3 = Color3.new(1, 1, 1)
-CloseBtn.Font = Enum.Font.GothamBold
-CloseBtn.TextSize = 16
-CloseBtn.Parent = TitleBar
-local CloseCorner = Instance.new("UICorner")
-CloseCorner.CornerRadius = UDim.new(0, 6)
-CloseCorner.Parent = CloseBtn
+Title.Parent = Frame
 
 local Status = Instance.new("TextLabel")
-Status.Size = UDim2.new(1, -20, 0, 22)
-Status.Position = UDim2.new(0, 10, 0, 44)
+Status.Size = UDim2.new(1, -16, 0, 20)
+Status.Position = UDim2.new(0, 8, 0, 36)
 Status.BackgroundTransparency = 1
-Status.Text = "idle  ·  set base first"
-Status.TextColor3 = Color3.fromRGB(140, 140, 150)
+Status.Text = "idle — set base"
+Status.TextColor3 = Color3.fromRGB(150, 150, 150)
 Status.Font = Enum.Font.Gotham
 Status.TextSize = 12
 Status.TextXAlignment = Enum.TextXAlignment.Left
 Status.Parent = Frame
 
 local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Size = UDim2.new(1, -20, 0, 34)
-ToggleBtn.Position = UDim2.new(0, 10, 0, 72)
-ToggleBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 52)
+ToggleBtn.Size = UDim2.new(1, -16, 0, 32)
+ToggleBtn.Position = UDim2.new(0, 8, 0, 60)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 ToggleBtn.Text = "START"
 ToggleBtn.TextColor3 = Color3.new(1, 1, 1)
 ToggleBtn.Font = Enum.Font.GothamBold
 ToggleBtn.TextSize = 14
 ToggleBtn.Parent = Frame
-local ToggleCorner = Instance.new("UICorner")
-ToggleCorner.CornerRadius = UDim.new(0, 8)
-ToggleCorner.Parent = ToggleBtn
+Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 6)
 
 local BaseBtn = Instance.new("TextButton")
-BaseBtn.Size = UDim2.new(1, -20, 0, 30)
-BaseBtn.Position = UDim2.new(0, 10, 0, 114)
-BaseBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+BaseBtn.Size = UDim2.new(1, -16, 0, 28)
+BaseBtn.Position = UDim2.new(0, 8, 0, 98)
+BaseBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 BaseBtn.Text = "SET BASE"
-BaseBtn.TextColor3 = Color3.fromRGB(210, 210, 210)
+BaseBtn.TextColor3 = Color3.new(1, 1, 1)
 BaseBtn.Font = Enum.Font.Gotham
-BaseBtn.TextSize = 13
+BaseBtn.TextSize = 12
 BaseBtn.Parent = Frame
-local BaseCorner = Instance.new("UICorner")
-BaseCorner.CornerRadius = UDim.new(0, 8)
-BaseCorner.Parent = BaseBtn
+Instance.new("UICorner", BaseBtn).CornerRadius = UDim.new(0, 6)
 
-local SpeedLabel = Instance.new("TextLabel")
-SpeedLabel.Size = UDim2.new(1, -20, 0, 16)
-SpeedLabel.Position = UDim2.new(0, 10, 0, 152)
-SpeedLabel.BackgroundTransparency = 1
-SpeedLabel.Text = "speed  ·  90"
-SpeedLabel.TextColor3 = Color3.fromRGB(150, 150, 160)
-SpeedLabel.Font = Enum.Font.Gotham
-SpeedLabel.TextSize = 11
-SpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
-SpeedLabel.Parent = Frame
+local NoclipBtn = Instance.new("TextButton")
+NoclipBtn.Size = UDim2.new(1, -16, 0, 26)
+NoclipBtn.Position = UDim2.new(0, 8, 0, 132)
+NoclipBtn.BackgroundColor3 = Color3.fromRGB(40, 60, 40)
+NoclipBtn.Text = "NOCLIP: ON"
+NoclipBtn.TextColor3 = Color3.new(1, 1, 1)
+NoclipBtn.Font = Enum.Font.Gotham
+NoclipBtn.TextSize = 12
+NoclipBtn.Parent = Frame
+Instance.new("UICorner", NoclipBtn).CornerRadius = UDim.new(0, 6)
+
+local LevelBtn = Instance.new("TextButton")
+LevelBtn.Size = UDim2.new(1, -16, 0, 26)
+LevelBtn.Position = UDim2.new(0, 8, 0, 164)
+LevelBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+LevelBtn.Text = "AUTO LEVEL: ON"
+LevelBtn.TextColor3 = Color3.new(1, 1, 1)
+LevelBtn.Font = Enum.Font.Gotham
+LevelBtn.TextSize = 12
+LevelBtn.Parent = Frame
+Instance.new("UICorner", LevelBtn).CornerRadius = UDim.new(0, 6)
 
 local SpeedBox = Instance.new("TextBox")
-SpeedBox.Size = UDim2.new(1, -20, 0, 26)
-SpeedBox.Position = UDim2.new(0, 10, 0, 172)
-SpeedBox.BackgroundColor3 = Color3.fromRGB(28, 28, 32)
+SpeedBox.Size = UDim2.new(1, -16, 0, 24)
+SpeedBox.Position = UDim2.new(0, 8, 0, 196)
+SpeedBox.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 SpeedBox.Text = "90"
 SpeedBox.TextColor3 = Color3.new(1, 1, 1)
 SpeedBox.Font = Enum.Font.Gotham
-SpeedBox.TextSize = 13
-SpeedBox.PlaceholderText = "studs / s"
+SpeedBox.TextSize = 12
+SpeedBox.PlaceholderText = "speed"
 SpeedBox.Parent = Frame
-local SpeedCorner = Instance.new("UICorner")
-SpeedCorner.CornerRadius = UDim.new(0, 6)
-SpeedCorner.Parent = SpeedBox
-
-local Info = Instance.new("TextLabel")
-Info.Size = UDim2.new(1, -20, 0, 18)
-Info.Position = UDim2.new(0, 10, 0, 206)
-Info.BackgroundTransparency = 1
-Info.Text = "fuse · incubator · rift · machine"
-Info.TextColor3 = Color3.fromRGB(100, 100, 110)
-Info.Font = Enum.Font.Gotham
-Info.TextSize = 10
-Info.TextXAlignment = Enum.TextXAlignment.Left
-Info.Parent = Frame
+Instance.new("UICorner", SpeedBox).CornerRadius = UDim.new(0, 4)
 
 local function getRoot()
 	local char = lp.Character
@@ -188,38 +133,32 @@ local function getHum()
 	return char and char:FindFirstChildOfClass("Humanoid")
 end
 
-local function isMachineEggPrompt(prompt)
+local function isEggPrompt(prompt)
 	if not prompt or not prompt:IsA("ProximityPrompt") then return false end
-	local parentName = prompt.Parent and prompt.Parent.Name:lower() or ""
-	local name = prompt.Name:lower()
-	local action = (prompt.ActionText or ""):lower()
-	local object = (prompt.ObjectText or ""):lower()
-	local words = {"machine", "fuse", "incubator", "rift", "dispenser", "eggmachine", "sakura", "hungry", "monster"}
-	for _, w in ipairs(words) do
-		if parentName:find(w) or name:find(w) or action:find(w) or object:find(w) then
-			return true
-		end
-	end
-	return action:find("egg") or object:find("egg")
+	local txt = ((prompt.ActionText or "") .. (prompt.ObjectText or "") .. (prompt.Parent and prompt.Parent.Name or "")):lower()
+	return txt:find("egg") or txt:find("machine") or txt:find("fuse") or txt:find("incubator") or txt:find("rift") or txt:find("steal")
 end
 
-local function findMachineEgg()
+local function isLevelPrompt(prompt)
+	if not prompt or not prompt:IsA("ProximityPrompt") then return false end
+	local txt = ((prompt.ActionText or "") .. (prompt.ObjectText or "") .. (prompt.Parent and prompt.Parent.Name or "")):lower()
+	return txt:find("rebirth") or txt:find("level") or txt:find("upgrade") or txt:find("prestige") or txt:find("rank")
+end
+
+local function findClosest(promptCheck)
 	local root = getRoot()
 	if not root then return nil end
-	local closest, closestDist = nil, math.huge
+	local closest, dist = nil, math.huge
 	for _, v in ipairs(workspace:GetDescendants()) do
-		if isMachineEggPrompt(v) and v.Enabled then
+		if promptCheck(v) and v.Enabled then
 			local pos
 			local p = v.Parent
-			if p:IsA("BasePart") then
-				pos = p.Position
-			elseif p:IsA("Model") then
-				pos = p:GetPivot().Position
-			end
+			if p:IsA("BasePart") then pos = p.Position
+			elseif p:IsA("Model") then pos = p:GetPivot().Position end
 			if pos then
-				local dist = (pos - root.Position).Magnitude
-				if dist < closestDist and dist > 4 then
-					closestDist = dist
+				local d = (pos - root.Position).Magnitude
+				if d < dist and d > 3 then
+					dist = d
 					closest = v
 				end
 			end
@@ -234,50 +173,83 @@ local function tweenTo(targetPos)
 	local hum = getHum()
 	if hum then hum.WalkSpeed = tweenSpeed end
 	local dist = (root.Position - targetPos).Magnitude
-	local t = math.clamp(dist / tweenSpeed, 0.25, 3)
-	local tween = TweenService:Create(root, TweenInfo.new(t, Enum.EasingStyle.Linear), {CFrame = CFrame.new(targetPos + Vector3.new(0, 2.5, 0))})
+	local t = math.clamp(dist / tweenSpeed, 0.2, 4)
+	local tween = TweenService:Create(root, TweenInfo.new(t, Enum.EasingStyle.Linear), {CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))})
 	tween:Play()
 	tween.Completed:Wait()
 	if hum then hum.WalkSpeed = 16 end
 end
 
 local function goBase()
-	if not baseCFrame then
-		local root = getRoot()
-		if root then baseCFrame = root.CFrame end
-		return
+	if baseCFrame then
+		tweenTo(baseCFrame.Position)
 	end
-	tweenTo(baseCFrame.Position)
 end
 
-local function machineLoop()
+-- no dead
+task.spawn(function()
+	while true do
+		local hum = getHum()
+		if hum then
+			hum.Health = hum.MaxHealth
+			if noclip then
+				for _, part in ipairs(lp.Character:GetDescendants()) do
+					if part:IsA("BasePart") then
+						part.CanCollide = false
+					end
+				end
+			end
+		end
+		task.wait(0.15)
+	end
+end)
+
+local function mainLoop()
 	while running do
 		local root = getRoot()
 		if not root then
-			Status.Text = "waiting for character"
+			Status.Text = "respawning..."
 			task.wait(1)
 			continue
 		end
-		local prompt = findMachineEgg()
-		if prompt then
-			Status.Text = "stealing..."
+
+		-- auto level first
+		if autoLevel then
+			local lvl = findClosest(isLevelPrompt)
+			if lvl then
+				Status.Text = "leveling..."
+				local pos
+				local p = lvl.Parent
+				if p:IsA("BasePart") then pos = p.Position elseif p:IsA("Model") then pos = p:GetPivot().Position end
+				if pos then
+					tweenTo(pos)
+					task.wait(0.2)
+					safeFirePrompt(lvl)
+					task.wait(0.4)
+				end
+			end
+		end
+
+		-- steal egg
+		local egg = findClosest(isEggPrompt)
+		if egg then
+			Status.Text = "stealing egg..."
 			local pos
-			local p = prompt.Parent
-			if p:IsA("BasePart") then pos = p.Position
-			elseif p:IsA("Model") then pos = p:GetPivot().Position end
+			local p = egg.Parent
+			if p:IsA("BasePart") then pos = p.Position elseif p:IsA("Model") then pos = p:GetPivot().Position end
 			if pos then
 				tweenTo(pos)
-				task.wait(0.18)
-				safeFirePrompt(prompt)
-				task.wait(0.45)
+				task.wait(0.15)
+				safeFirePrompt(egg)
+				task.wait(0.5)
 				goBase()
-				task.wait(0.65)
+				task.wait(0.6)
 			end
 		else
 			Status.Text = "scanning..."
-			task.wait(1.4)
+			task.wait(1.2)
 		end
-		task.wait(0.35)
+		task.wait(0.3)
 	end
 	Status.Text = "stopped"
 end
@@ -285,30 +257,37 @@ end
 ToggleBtn.MouseButton1Click:Connect(function()
 	running = not running
 	ToggleBtn.Text = running and "STOP" or "START"
-	ToggleBtn.BackgroundColor3 = running and Color3.fromRGB(140, 40, 40) or Color3.fromRGB(45, 45, 52)
-	if running then task.spawn(machineLoop) end
+	ToggleBtn.BackgroundColor3 = running and Color3.fromRGB(140, 40, 40) or Color3.fromRGB(50, 50, 50)
+	if running then task.spawn(mainLoop) end
 end)
 
 BaseBtn.MouseButton1Click:Connect(function()
 	local root = getRoot()
 	if root then
 		baseCFrame = root.CFrame
-		Status.Text = "base locked"
+		Status.Text = "base set"
 	end
+end)
+
+NoclipBtn.MouseButton1Click:Connect(function()
+	noclip = not noclip
+	NoclipBtn.Text = noclip and "NOCLIP: ON" or "NOCLIP: OFF"
+	NoclipBtn.BackgroundColor3 = noclip and Color3.fromRGB(40, 60, 40) or Color3.fromRGB(50, 40, 40)
+end)
+
+LevelBtn.MouseButton1Click:Connect(function()
+	autoLevel = not autoLevel
+	LevelBtn.Text = autoLevel and "AUTO LEVEL: ON" or "AUTO LEVEL: OFF"
+	LevelBtn.BackgroundColor3 = autoLevel and Color3.fromRGB(40, 40, 60) or Color3.fromRGB(40, 40, 40)
 end)
 
 SpeedBox.FocusLost:Connect(function()
 	local n = tonumber(SpeedBox.Text)
-	if n and n > 15 and n < 400 then
+	if n and n > 10 and n < 500 then
 		tweenSpeed = n
-		SpeedLabel.Text = "speed  ·  " .. n
 	else
 		SpeedBox.Text = tostring(tweenSpeed)
 	end
-end)
-
-CloseBtn.MouseButton1Click:Connect(function()
-	Frame.Visible = false
 end)
 
 UserInputService.InputBegan:Connect(function(input, gpe)
@@ -322,10 +301,10 @@ end)
 
 task.spawn(function()
 	while true do
-		task.wait(50)
+		task.wait(40)
 		local hum = getHum()
 		if hum then hum.Jump = true end
 	end
 end)
 
-print("zynn machine steal loaded (multi-executor)")
+print("zynn steal + level + no dead loaded")
